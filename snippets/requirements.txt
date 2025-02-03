@@ -1,0 +1,7 @@
+Shapely
+pymoo
+numpy
+pandas
+PyYAML
+openpyxl
+aerialist @ git+https://github.com/skhatiri/Aerialist.git@2703f87f1cdddee5d9fd2bd6709d180dbede0611
