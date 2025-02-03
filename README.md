@@ -16,4 +16,4 @@
  * (Optional) Set your own configurations in `config.yaml`
  
 * Run the experiment:
-     * `python rvp_search.py`
+     * `python3 rvp_search.py`
