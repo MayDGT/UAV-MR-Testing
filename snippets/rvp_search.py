@@ -179,7 +179,7 @@ class RvpProblem(ElementwiseProblem):
             comfort_diff if self.target_pattern[2] is True else -1.0 * comfort_diff,
         ]
 
-        logger.info("Output F: %s", str(out["F"]))
+        logger.info("Output F: %s, Plot file: %s", str(out["F"]), self.get_latest_plot())
 
         # record if the RVP is satisfied
         if self.judge_satisfaction([performance_diff, safety_diff, comfort_diff]):
@@ -268,7 +268,7 @@ class RvpProblem(ElementwiseProblem):
         for d, target in zip(diff, self.target_pattern):
             if (d < 0 and target) or (d > 0 and not target):
                 count += 1
-        if count == 4:
+        if count == len(self.target_pattern):
             return True
         return False
 
