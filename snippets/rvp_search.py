@@ -28,7 +28,7 @@ from utils import calculate_accuracy, calculate_comfort, calculate_corners
 current_file_path = __file__
 current_directory = os.path.dirname(current_file_path)
 current_file_name = os.path.splitext(os.path.basename(current_file_path))[0]
-current_time = datetime.now().strftime("%Y-%m-%d_%H:%M")
+current_time = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
 original_log_directory = os.path.join(current_directory, "results/logs")
 original_plot_directory = os.path.join(current_directory, "results")
 new_folder_name = f"{current_time}"
@@ -158,22 +158,18 @@ class RvpProblem(ElementwiseProblem):
         # the max jerk is expected to decrease if the comfort requirement must be satisfied
         comfort_diff = avg_metrics["followup"]["comfort"] - avg_metrics["source"]["comfort"]
 
-        # another fitness: we calculate the number&area of overlaps and minimize it
+        # another fitness: we calculate the area of overlaps and minimize it
         overlap_area = 0
-        overlap_num = 0
         polygons = [param.polygon for param in src_scenario_param]
         for poly1, poly2 in combinations(polygons, 2):  # All pairs
             if poly1.intersects(poly2):
                 intersection = poly1.intersection(poly2)
                 area = intersection.area
                 overlap_area += area
-                overlap_num += 1
         logger.info("overlapped area: %f", overlap_area)
-        logger.info("overlapped num: %d", overlap_num)
-        overlap_score = overlap_area + 0.5 * overlap_num
 
         out["F"] = [
-            overlap_score,  # we minimize the overlap num to ensure scenario plausibility
+            overlap_area,  # we minimize the overlap num to ensure scenario plausibility
             performance_diff if self.target_pattern[0] is True else -1.0 * performance_diff,
             safety_diff if self.target_pattern[1] is True else -1.0 * safety_diff,
             comfort_diff if self.target_pattern[2] is True else -1.0 * comfort_diff,
@@ -186,7 +182,7 @@ class RvpProblem(ElementwiseProblem):
             logger.info("Find a satisfied RVP: %s, plot file: %s", self.target_pattern, self.get_latest_plot())
             mission_id = re.search(r"mission(\d+)", self.config["case_study_file"], re.IGNORECASE)
             mission_name = f"Mission {mission_id.group(1)}"
-            new_row = [mission_name, self.config["MR_name"], self.target_pattern, str(avg_metrics), self.get_latest_plot()]
+            new_row = [mission_name, self.config["MR_name"], str(self.target_pattern), str(avg_metrics), self.get_latest_plot()]
             self.sheet.append(new_row)
 
     @staticmethod
