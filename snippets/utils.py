@@ -206,6 +206,7 @@ def calculate_accuracy(ulg_folder, yaml_file_name):
 
     # delete the csv file after calculation
     os.remove(csv_file_path)
+    os.remove(ulg_file_path)
     return distance
 
 
