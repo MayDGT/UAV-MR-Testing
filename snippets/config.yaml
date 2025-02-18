@@ -1,4 +1,4 @@
-target_pattern: [[True, True, False], [True, False, True], [False, True, True], [False, False, False]]
+target_pattern: [[True, True, False], [True, False, True], [True, False, False], [False, True, True], [False, True, False], [False, False, True], [False, False, False]]
 case_study_file: case_studies/mission1.yaml
 MR_name: remove  # decrease or remove
 num_of_obstacles: [1, 3]

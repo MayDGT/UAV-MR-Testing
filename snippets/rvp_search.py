@@ -320,14 +320,14 @@ if __name__ == "__main__":
     with open("config.yaml") as f:
         config = yaml.safe_load(f)
     target_pattern = config["target_pattern"]
-    for i in range(1):  # 2 MRs
+    for i in range(2):  # 2 MRs
         if i == 0:
             config["MR_name"] = "remove"
             config["num_of_obstacles"] = [2, 3]
         else:
             config["MR_name"] = "decrease"
             config["num_of_obstacles"] = [1, 3]
-        for j in range(1):  # 3 missions
+        for j in range(3):  # 3 missions
             config["case_study_file"] = f"case_studies/mission{j + 1}.yaml"
             for k in range(len(target_pattern)):
                 logger.info("Mission File: %s, target_pattern: %s", config["case_study_file"], str(target_pattern[k]))

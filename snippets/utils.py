@@ -149,34 +149,37 @@ def calculate_corners(obstacle_param):
     obstacle_param.corners = sorted_corners
 
 def calculate_comfort(ulg_folder):  # measured by max Jerk (https://en.wikipedia.org/wiki/Jerk_(physics))
+    max_jerk = 1
     ulg_files = [f for f in os.listdir(ulg_folder) if f.endswith('.ulg')]
-    ulg_file = max(ulg_files, key=lambda f: os.path.getmtime(os.path.join(ulg_folder, f)))
-    topic = "vehicle_acceleration"
-    ulg_file_path = os.path.join(ulg_folder, ulg_file)
-    csv_file_prefix = ulg_file.split('.')[0]  # File prefix without extension
-    csv_file_path = ulg_folder + f'/{csv_file_prefix}_{topic}_0.csv'
-    command = f"ulog2csv -m '{topic}' {ulg_file_path}"
-    subprocess.run(command, check=True, shell=True)
-    df = pandas.read_csv(csv_file_path)
-    # battery_list.append(1 - df.iloc[-1, 7])
-    time = df['timestamp'].values  # Timestamps in seconds
-    acc_x = df['xyz[0]'].values  # Acceleration in x-axis (m/s²)
-    acc_y = df['xyz[1]'].values  # Acceleration in y-axis (m/s²)
-    acc_z = df['xyz[2]'].values  # Acceleration in z-axis (m/s²)
+    if len(ulg_files) != 0:
+        ulg_file = max(ulg_files, key=lambda f: os.path.getmtime(os.path.join(ulg_folder, f)))
+        topic = "vehicle_acceleration"
+        ulg_file_path = os.path.join(ulg_folder, ulg_file)
+        csv_file_prefix = ulg_file.split('.')[0]  # File prefix without extension
+        csv_file_path = ulg_folder + f'/{csv_file_prefix}_{topic}_0.csv'
+        command = f"ulog2csv -m '{topic}' {ulg_file_path}"
+        subprocess.run(command, check=True, shell=True)
+        df = pandas.read_csv(csv_file_path)
+        # battery_list.append(1 - df.iloc[-1, 7])
+        time = df['timestamp'].values  # Timestamps in seconds
+        acc_x = df['xyz[0]'].values  # Acceleration in x-axis (m/s²)
+        acc_y = df['xyz[1]'].values  # Acceleration in y-axis (m/s²)
+        acc_z = df['xyz[2]'].values  # Acceleration in z-axis (m/s²)
 
-    # Compute jerk (rate of change of acceleration) for each axis
-    jerk_x = np.gradient(acc_x, time)  # Jerk in x-axis (m/s³)
-    jerk_y = np.gradient(acc_y, time)  # Jerk in y-axis (m/s³)
-    jerk_z = np.gradient(acc_z, time)  # Jerk in z-axis (m/s³)
+        # Compute jerk (rate of change of acceleration) for each axis
+        jerk_x = np.gradient(acc_x, time)  # Jerk in x-axis (m/s³)
+        jerk_y = np.gradient(acc_y, time)  # Jerk in y-axis (m/s³)
+        jerk_z = np.gradient(acc_z, time)  # Jerk in z-axis (m/s³)
 
-    # Compute the total jerk magnitude at each timestamp
-    jerk_magnitude = np.sqrt(jerk_x ** 2 + jerk_y ** 2 + jerk_z ** 2)
+        # Compute the total jerk magnitude at each timestamp
+        jerk_magnitude = np.sqrt(jerk_x ** 2 + jerk_y ** 2 + jerk_z ** 2)
 
-    # Find the maximum jerk magnitude
-    max_jerk = np.max(jerk_magnitude)
+        # Find the maximum jerk magnitude
+        max_jerk = np.max(jerk_magnitude)
 
-    # delete the csv file after calculation
-    os.remove(csv_file_path)
+        # delete the csv file after calculation
+        os.remove(csv_file_path)
+        os.remove(ulg_file_path)
 
     return max_jerk
 
