@@ -22,6 +22,8 @@ from itertools import combinations
 import time
 from datetime import datetime
 import logging
+import traceback
+import glob
 from utils import calculate_accuracy, calculate_comfort, calculate_corners
 
 # create two new folders for storing .png and .ulg files
@@ -97,7 +99,7 @@ class RvpProblem(ElementwiseProblem):
         super().__init__(vars=vars, n_obj=4, n_ieq_constr=1)
 
     def _evaluate(self, x: Dict[str, float], out: Dict[str, List[float]], *args, **kwargs):
-        logger.info("x: %s", x)
+        logger.info("Individual: %s", x)
         obstacle_num = int(x["n"])
         src_scenario: List[Obstacle] = []
         fwp_scenario: List[Obstacle] = []
@@ -149,7 +151,12 @@ class RvpProblem(ElementwiseProblem):
             scenario: {metric: statistics.mean(values) for metric, values in data.items()}
             for scenario, data in metrics.items()
         }
+        std_metrics = {
+            scenario: {metric: statistics.stdev(values) for metric, values in data.items()}
+            for scenario, data in metrics.items()
+        }
         logger.info("Average metrics: %s", avg_metrics)
+        logger.info("Std metrics: %s", std_metrics)
 
         # the execution time is expected to decrease if the performance requirement must be satisfied
         performance_diff = avg_metrics["followup"]["performance"] - avg_metrics["source"]["performance"]
@@ -157,6 +164,15 @@ class RvpProblem(ElementwiseProblem):
         safety_diff = avg_metrics["source"]["safety"] - avg_metrics["followup"]["safety"]
         # the max jerk is expected to decrease if the comfort requirement must be satisfied
         comfort_diff = avg_metrics["followup"]["comfort"] - avg_metrics["source"]["comfort"]
+
+        fit_performance = (performance_diff / avg_metrics["source"]["performance"]) * \
+                  max(avg_metrics["followup"]["performance"], avg_metrics["source"]["performance"])
+
+        fit_safety = (safety_diff / avg_metrics["source"]["safety"] - 1) * \
+                     min(avg_metrics["source"]["safety"], avg_metrics["followup"]["safety"])
+
+        fit_comfort = (comfort_diff / avg_metrics["source"]["comfort"]) * \
+                     max(avg_metrics["followup"]["comfort"], avg_metrics["source"]["comfort"])
 
         # another fitness: we calculate the area of overlaps and minimize it
         overlap_area = 0
@@ -175,14 +191,14 @@ class RvpProblem(ElementwiseProblem):
             comfort_diff if self.target_pattern[2] is True else -1.0 * comfort_diff,
         ]
 
-        logger.info("Output F: %s, Plot file: %s", str(out["F"]), self.get_latest_plot())
+        logger.info("Output F: %s, Target pattern: %s, Plot file: %s", str(out["F"]), self.target_pattern, self.get_latest_plot())
 
         # record if the RVP is satisfied
         if self.judge_satisfaction([performance_diff, safety_diff, comfort_diff]):
             logger.info("Find a satisfied RVP: %s, plot file: %s", self.target_pattern, self.get_latest_plot())
             mission_id = re.search(r"mission(\d+)", self.config["case_study_file"], re.IGNORECASE)
             mission_name = f"Mission {mission_id.group(1)}"
-            new_row = [mission_name, self.config["MR_name"], str(self.target_pattern), str(avg_metrics), self.get_latest_plot()]
+            new_row = [mission_name, self.config["MR_name"], str(self.target_pattern), str(avg_metrics) + str(std_metrics), self.get_latest_plot()]
             self.sheet.append(new_row)
 
     @staticmethod
@@ -211,26 +227,30 @@ class RvpProblem(ElementwiseProblem):
         return fwp_scenario, fwp_scenario_param
 
     def run_pair(self, src_scenario, src_scenario_param, fwp_scenario, fwp_scenario_param, metrics, repetitions=1):
-        for _ in range(repetitions):
-            performance, _, trajectory_2d = self.execute(src_scenario)
+        for i in range(repetitions):
+            performance, safety, trajectory_2d = self.execute(src_scenario)
             comfort = calculate_comfort(new_log_path)
-            safety = self.calculate_min_distance(src_scenario_param, trajectory_2d)
+            logger.info("Src repetition %d: %f, %f, %f", i + 1, performance, safety, comfort)
+
+            # safety = self.calculate_min_distance(src_scenario_param, trajectory_2d)
             metrics["source"]["performance"].append(performance)
             metrics["source"]["safety"].append(safety)
             metrics["source"]["comfort"].append(comfort)
 
-        for _ in range(repetitions):
-            performance, _, trajectory_2d = self.execute(fwp_scenario)
+        for i in range(repetitions):
+            performance, safety, trajectory_2d = self.execute(fwp_scenario)
             comfort = calculate_comfort(new_log_path)
-            safety = self.calculate_min_distance(fwp_scenario_param, trajectory_2d)
+            logger.info("Fwp repetition %d: %f, %f, %f", i + 1, performance, safety, comfort)
+
+            # safety = self.calculate_min_distance(fwp_scenario_param, trajectory_2d)
             metrics["followup"]["performance"].append(performance)
             metrics["followup"]["safety"].append(safety)
             metrics["followup"]["comfort"].append(comfort)
 
     def execute(self, scenario):
-        test = TestCase(self.case_study, scenario)
+        test = TestCase(casestudy=self.case_study, obstacles=scenario)
         simulation_time = 999
-        min_distance = 999
+        min_distance = 0.01
         trajectory_2d = None
         try:
             start_time = time.time()
@@ -240,15 +260,15 @@ class RvpProblem(ElementwiseProblem):
             simulation_time = round(end_time - start_time, 2)
             min_distance = min(test.get_distances())
             test.plot()
-            self.move_results()
+            self.move_results(test.container_id)
         except Exception as e:
             logger.error(e)
 
-        return simulation_time, min_distance, trajectory_2d
+        return simulation_time, max(0.01, min_distance), trajectory_2d
 
     @staticmethod
     def calculate_min_distance(src_scenario_param, trajectory_2d):
-        min_distance = 999
+        min_distance = 0
         if trajectory_2d is None:
             return min_distance
         else:
@@ -268,20 +288,27 @@ class RvpProblem(ElementwiseProblem):
             return True
         return False
 
-    def move_results(self):
-        ulg_files = [f for f in os.listdir(original_log_directory) if f.endswith('.ulg')]
-        latest_ulg = max(ulg_files, key=lambda f: os.path.getmtime(os.path.join(original_log_directory, f)))
-        latest_ulg_path = os.path.join(original_log_directory, latest_ulg)
-        shutil.move(latest_ulg_path, new_log_path)
+    def move_results(self, container_id):
+        ulg_files = [
+            f for f in os.listdir(original_log_directory)
+            if f.endswith('.ulg') and container_id in f
+        ]
+        if len(ulg_files) != 0:
+            latest_ulg = max(ulg_files, key=lambda f: os.path.getmtime(os.path.join(original_log_directory, f)))
+            latest_ulg_path = os.path.join(original_log_directory, latest_ulg)
+            shutil.move(latest_ulg_path, new_log_path)
 
         plot_files = [f for f in os.listdir(original_plot_directory) if f.endswith('.png')]
-        latest_plot = max(plot_files, key=lambda f: os.path.getmtime(os.path.join(original_plot_directory, f)))
-        latest_plot_path = os.path.join(original_plot_directory, latest_plot)
-        shutil.move(latest_plot_path, new_plot_path)
+        if len(plot_files) != 0:
+            latest_plot = max(plot_files, key=lambda f: os.path.getmtime(os.path.join(original_plot_directory, f)))
+            latest_plot_path = os.path.join(original_plot_directory, latest_plot)
+            shutil.move(latest_plot_path, new_plot_path)
 
     def get_latest_plot(self):
+        latest_file = ""
         plot_files = [f for f in os.listdir(new_plot_path) if f.endswith('.png')]
-        latest_file = max(plot_files, key=lambda f: os.path.getmtime(os.path.join(new_plot_path, f)))
+        if len(plot_files) != 0:
+            latest_file = max(plot_files, key=lambda f: os.path.getmtime(os.path.join(new_plot_path, f)))
         return latest_file
 
 
@@ -295,7 +322,7 @@ class RvpGenerator:
             self.workbook = Workbook()
             self.sheet = self.workbook.active
             self.sheet.title = "RVP Results"
-            headers = ["Mission Name", "MR Name", "Pattern", "Average Metrics", "Plot File"]
+            headers = ["Mission Name", "MR Name", "Pattern", "Metrics", "Plot File"]
             self.sheet.append(headers)
         else:
             self.workbook = openpyxl.load_workbook(self.result_path)

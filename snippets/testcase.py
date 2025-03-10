@@ -17,12 +17,15 @@ class TestCase(object):
     def __init__(self, casestudy: DroneTest, obstacles: List[Obstacle]):
         self.test = copy.deepcopy(casestudy)
         self.test.simulation.obstacles = obstacles
+        self.container_id = None
 
     def execute(self) -> Trajectory:
         # if AGENT == AgentConfig.LOCAL:
         #     agent = LocalAgent(self.test)
         if AGENT == AgentConfig.DOCKER:
             agent = DockerAgent(self.test)
+            self.container_id = agent.container_id[:12]
+            logger.info("Container ID: %s", self.container_id)
         if AGENT == AgentConfig.K8S:
             agent = K8sAgent(self.test)
         self.test_results = agent.run()
